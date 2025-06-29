@@ -150,7 +150,7 @@ def save_domain(chat_id, domain):
     with open(DOMAIN_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-async def otomatik_kontrol(app: ApplicationBuilder.DEFAULT_TYPE):
+async def otomatik_kontrol(app):
     while True:
         data = {}
         if os.path.exists(DOMAIN_FILE):
