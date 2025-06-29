@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: btk-sorgu-botu
-    env: python
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python main.py"
-    packages:
-      - name: tesseract-ocr
