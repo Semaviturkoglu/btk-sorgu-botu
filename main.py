@@ -12,7 +12,7 @@ from flask import Flask
 from threading import Thread
 
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
 from parsel import Selector
 from PIL import Image
 from requests import Session
@@ -150,7 +150,7 @@ def save_domain(chat_id, domain):
     with open(DOMAIN_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
-async def otomatik_kontrol(app):
+async def otomatik_kontrol(app: Application):
     while True:
         data = {}
         if os.path.exists(DOMAIN_FILE):
@@ -200,9 +200,7 @@ async def degisim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def main():
-    """Botu ve arkaplan görevlerini aynı anda başlatır."""
-    
-    # UptimeRobot için web sunucusunu ateşliyoruz, bu ayrı bir yolda koşacak
+    # UptimeRobot için web sunucusunu ateşliyoruz
     keep_alive()
 
     # Telegram botunu kuruyoruz
@@ -213,23 +211,12 @@ async def main():
     app.add_handler(CommandHandler("sorgu", sorgu))
     app.add_handler(CommandHandler("degisim", degisim))
 
-    # Hem botun mesaj dinlemesini (run_polling), hem de bizim otomatik kontrolü
-    # AYNI ANDA, BARIŞ İÇİNDE çalıştırmasını sağlıyoruz. Bütün sihir burada.
-    try:
-        await asyncio.gather(
-            app.run_polling(allowed_updates=Update.ALL_TYPES),
-            otomatik_kontrol(app)
-        )
-    except Exception as e:
-        print(f"Ana programda ölümcül hata: {e}")
-    finally:
-        # Bu kısım normalde çalışmaz çünkü run_polling sonsuz döngüdür,
-        # ama bir hata olursa veya manuel kapatılırsa botu düzgün kapatır.
-        await app.shutdown()
-
+    # İki işi aynı anda, sonsuza kadar çalıştır. Hata olursa Render zaten yeniden başlatır.
+    # O kendini kapatma mekanizmasını siktir ettim.
+    await asyncio.gather(
+        app.run_polling(allowed_updates=Update.ALL_TYPES),
+        otomatik_kontrol(app)
+    )
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Bot manuel olarak kapatıldı.")
+    asyncio.run(main())
