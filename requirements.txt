@@ -5,3 +5,4 @@ pytesseract
 flask
 python-telegram-bot
 pytesseract
+waitress
