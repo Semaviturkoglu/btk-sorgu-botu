@@ -10,6 +10,7 @@ import random
 
 from flask import Flask
 from threading import Thread
+from waitress import serve  # <<< ARABULUCUYU BURAYA ÇAĞIRIYORUZ
 
 from telegram import Update
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, ContextTypes
@@ -18,7 +19,6 @@ from PIL import Image
 from requests import Session
 
 # UPTIMEROBOT'IN DÜRTMEK İÇİN KULLANACAĞI WEB SUNUCUSU
-# Bu kısım botun uyumasını engellemek için var.
 keep_alive_app = Flask('')
 
 @keep_alive_app.route('/')
@@ -26,8 +26,9 @@ def home():
     return "Kardeşimin botu zımba gibi ayakta!"
 
 def run_flask():
-  port = int(os.environ.get('PORT', 8080))
-  keep_alive_app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 8080))
+    # Flask'ın kendi dandik sunucusu yerine profesyonel arabulucuyu kullanıyoruz
+    serve(keep_alive_app, host="0.0.0.0", port=port)
 
 def keep_alive():
     t = Thread(target=run_flask)
@@ -44,13 +45,14 @@ class BTKSorgu:
         self.ana_sayfa = "https://internet2.btk.gov.tr"
         self.sorgu_sayfasi = "https://internet2.btk.gov.tr/sitesorgu/"
         self.sorgu_url = search(r"(?:https?://)?(?:www\.)?([^/]+)", sorgu_url).group(1)
-        self._gecici_gorsel = f"/tmp/captcha_{uuid.uuid4().hex}.png" # /tmp/ klasörü serverlarda yazmaya daha uygun
+        self._gecici_gorsel = f"/tmp/captcha_{uuid.uuid4().hex}.png"
         self.oturum = Session()
 
     def __captcha_ver(self):
         try:
             ilk_bakis = self.oturum.get(self.sorgu_sayfasi)
             captcha_yolu = Selector(ilk_bakis.text).xpath("//div[@class='arama_captcha']/img/@src").get()
+            if not captcha_yolu: return None
             captcha_data = self.oturum.get(f"{self.ana_sayfa}{captcha_yolu}", stream=True)
             with open(self._gecici_gorsel, "wb") as f:
                 copyfileobj(captcha_data.raw, f)
@@ -127,7 +129,6 @@ async def sorgu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(mesaj)
         save_domain(chat_id, domain)
-
     except Exception as e:
         await update.message.reply_text(f"❌ Sorgu sırasında hata oluştu:\n{e}")
 
@@ -160,7 +161,7 @@ async def otomatik_kontrol(app: Application):
             except (FileNotFoundError, json.JSONDecodeError):
                 data = {}
 
-        for chat_id, domain in data.items():
+        for chat_id, domain in list(data.items()):
             try:
                 btk = BTKSorgu(domain)
                 html = btk.karar_ver()
@@ -184,9 +185,8 @@ async def otomatik_kontrol(app: Application):
                     )
             except Exception as e:
                 print(f"[HATA - Otomatik kontrol] {chat_id}: {e}")
-
-        bekleme_suresi = 30 * 60  # 30 dakika sabit bekleme
-        await asyncio.sleep(bekleme_suresi)
+        
+        await asyncio.sleep(30 * 60)
 
 async def degisim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -198,21 +198,14 @@ async def degisim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_domain(chat_id, yeni_domain)
     await update.message.reply_text(f"✅ Domain başarıyla '{yeni_domain}' olarak güncellendi.")
 
-
 async def main():
-    # UptimeRobot için web sunucusunu ateşliyoruz
     keep_alive()
-
-    # Telegram botunu kuruyoruz
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Komutları ekliyoruz
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("sorgu", sorgu))
     app.add_handler(CommandHandler("degisim", degisim))
 
-    # İki işi aynı anda, sonsuza kadar çalıştır. Hata olursa Render zaten yeniden başlatır.
-    # O kendini kapatma mekanizmasını siktir ettim.
     await asyncio.gather(
         app.run_polling(allowed_updates=Update.ALL_TYPES),
         otomatik_kontrol(app)
