@@ -1,0 +1,7 @@
+requests
+parsel
+pillow
+pytesseract
+flask
+telegram-ext
+pytesseract
